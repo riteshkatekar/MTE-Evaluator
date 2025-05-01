@@ -14,4 +14,4 @@ __pycache__/
 
 
 # local or production level
-config
+app/config.py
