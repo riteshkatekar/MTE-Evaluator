@@ -32,7 +32,6 @@ These folders will be created on runtime:
 - `downloads/`: Incoming `.xlsx` files from Gmail
 - `feedback_records/`: Feedback JSON for auditing
 - `reports/`: Generated PDF reports
-- `fonts/`: Place `DejaVuSans.ttf` here (required for PDF Unicode support)
 
 ---
 
