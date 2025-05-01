@@ -496,7 +496,6 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from evaluator import evaluate_mte
 from utils import extract_mte_data
-import fitz  # PyMuPDF for reading previous PDF content
 
 # Scopes for Gmail and Drive APIs
 SCOPES = [
@@ -562,20 +561,7 @@ def save_attachment(mime_msg, download_folder):
             return filepath
     return None
 
-def extract_overall_score_from_pdf(pdf_path):
-    try:
-        doc = fitz.open(pdf_path)
-        for page in doc:
-            text = page.get_text()
-            if "Overall Score:" in text:
-                line = [l for l in text.split('\n') if "Overall Score:" in l][0]
-                return float(line.split(":")[-1].strip())
-        return None
-    except Exception as e:
-        print(f"Error reading PDF: {e}")
-        return None
-
-def generate_pdf(feedback, pdf_path, comparison_note=None):
+def generate_pdf(feedback, pdf_path):
     section_scores = feedback.get("section_scores", {})
     overall_score = feedback.get("overall_score", "N/A")
     strengths = feedback.get("strengths", [])
@@ -597,12 +583,6 @@ def generate_pdf(feedback, pdf_path, comparison_note=None):
     pdf.ln(10)
 
     pdf.set_font("DejaVu", '', 12)
-
-    # Add comparison note
-    if comparison_note:
-        pdf.set_fill_color(200, 255, 200) if 'improved' in comparison_note.lower() else pdf.set_fill_color(255, 200, 200)
-        pdf.multi_cell(0, 10, comparison_note, fill=True)
-        pdf.ln(5)
 
     def add_bullet_section(title, items):
         if not items:
@@ -683,6 +663,11 @@ def main():
     messages = get_unread_messages(gmail_service)
     print(f'Found {len(messages)} unread messages.')
 
+    # Ensure 'MTE' parent folder exists on Drive
+    mte_folder_id = search_folder(drive_service, 'MTE')
+    if not mte_folder_id:
+        mte_folder_id = create_folder(drive_service, 'MTE')
+
     for msg in messages:
         mime_msg = get_message(gmail_service, msg['id'])
         if not mime_msg:
@@ -707,37 +692,19 @@ def main():
             mte_data = extract_mte_data(attachment_path)
             feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
 
-            student_folder_id = search_folder(drive_service, student_email)
+            student_folder_id = search_folder(drive_service, student_email, parent_id=mte_folder_id)
             if not student_folder_id:
-                student_folder_id = create_folder(drive_service, student_email)
+                student_folder_id = create_folder(drive_service, student_email, parent_id=mte_folder_id)
 
             pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
             pdf_path = os.path.join('reports', pdf_filename)
 
-            # Check for previous report
-            previous_reports = [f for f in os.listdir('reports') if f.startswith(os.path.splitext(os.path.basename(attachment_path))[0].split('_')[0])]
-            previous_score = None
-            if previous_reports:
-                previous_file = os.path.join('reports', sorted(previous_reports)[-1])
-                previous_score = extract_overall_score_from_pdf(previous_file)
-
-            current_score = feedback.get("overall_score", None)
-            comparison_note = None
-            if previous_score and current_score:
-                if float(current_score) > float(previous_score):
-                    comparison_note = f"Performance improved from {previous_score} to {current_score}."
-                elif float(current_score) < float(previous_score):
-                    comparison_note = f"Performance declined from {previous_score} to {current_score}."
-                else:
-                    comparison_note = "Performance remained the same as last time."
-
-            generate_pdf(feedback, pdf_path, comparison_note=comparison_note)
+            generate_pdf(feedback, pdf_path)
             print(f'Generated PDF: {pdf_path}')
 
             upload_file(drive_service, attachment_path, student_folder_id)
             upload_file(drive_service, pdf_path, student_folder_id)
 
-            # Send to student
             send_email_with_attachment(
                 service=gmail_service,
                 to=student_email,
@@ -747,7 +714,6 @@ def main():
                 file_path=pdf_path
             )
 
-            # Send to mentors (if any)
             if mentor_emails:
                 send_email_with_attachment(
                     service=gmail_service,
