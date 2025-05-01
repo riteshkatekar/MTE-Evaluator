@@ -30,7 +30,6 @@ Please manually add these **required files** in the `app/` folder:
 These folders will be created on runtime:
 
 - `downloads/`: Incoming `.xlsx` files from Gmail
-- `feedback_records/`: Feedback JSON for auditing
 - `reports/`: Generated PDF reports
 
 ---
