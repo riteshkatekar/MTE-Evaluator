@@ -1,0 +1,14 @@
+# Sensitive config files
+credentials.json
+token.json
+system_config.json
+
+# Generated folders
+downloads/
+feedback_records/
+reports/
+
+
+# Python cache
+__pycache__/
+*.pyc

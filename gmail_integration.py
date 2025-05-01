@@ -1,0 +1,766 @@
+# #gmail_integration.py
+# import os
+# import base64
+# from email import message_from_bytes
+# from email.message import EmailMessage
+# from fpdf import FPDF
+# from google.auth.transport.requests import Request
+# from google.oauth2.credentials import Credentials
+# from google_auth_oauthlib.flow import InstalledAppFlow
+# from googleapiclient.discovery import build
+# from evaluator import evaluate_mte
+# from utils import extract_mte_data
+# # from fpdf.enums import XPos, YPos
+
+# # Gmail API scope
+# SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+
+# def authenticate_gmail():
+#     creds = None
+#     if os.path.exists('token.json'):
+#         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+#     if not creds or not creds.valid:
+#         if creds and creds.expired and creds.refresh_token:
+#             creds.refresh(Request())
+#         else:
+#             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+#             creds = flow.run_local_server(port=0)
+#         with open('token.json', 'w') as token:
+#             token.write(creds.to_json())
+#     return creds
+
+# def get_unread_messages(service, user_id='me'):
+#     try:
+#         response = service.users().messages().list(userId=user_id, labelIds=['INBOX'], q="is:unread").execute()
+#         return response.get('messages', [])
+#     except Exception as error:
+#         print(f'Error fetching messages: {error}')
+#         return []
+
+# def get_message(service, msg_id, user_id='me'):
+#     try:
+#         message = service.users().messages().get(userId=user_id, id=msg_id, format='raw').execute()
+#         msg_str = base64.urlsafe_b64decode(message['raw'].encode('ASCII'))
+#         return message_from_bytes(msg_str)
+#     except Exception as error:
+#         print(f'Error fetching message: {error}')
+#         return None
+
+# def mark_as_read(service, msg_id, user_id='me'):
+#     try:
+#         service.users().messages().modify(
+#             userId=user_id,
+#             id=msg_id,
+#             body={'removeLabelIds': ['UNREAD']}
+#         ).execute()
+#     except Exception as e:
+#         print(f"Failed to mark message {msg_id} as read: {e}")
+
+# def save_attachment(mime_msg, download_folder):
+#     for part in mime_msg.walk():
+#         if part.get_content_maintype() == 'multipart':
+#             continue
+#         if part.get('Content-Disposition') is None:
+#             continue
+#         filename = part.get_filename()
+#         if filename and filename.endswith('.xlsx'):
+#             os.makedirs(download_folder, exist_ok=True)
+#             filepath = os.path.join(download_folder, filename)
+#             with open(filepath, 'wb') as f:
+#                 f.write(part.get_payload(decode=True))
+#             return filepath
+#     return None
+
+# def generate_pdf(feedback, pdf_path):
+#     from fpdf import FPDF
+
+#     section_scores = feedback.get("section_scores", {})
+#     overall_score = feedback.get("overall_score", "N/A")
+#     strengths = feedback.get("strengths", [])
+#     areas_for_improvement = feedback.get("areas_for_improvement", [])
+#     suggestions = feedback.get("suggestions", [])
+
+#     pdf = FPDF()
+#     pdf.add_page()
+#     pdf.set_auto_page_break(auto=True, margin=15)
+
+#     pdf.add_font('DejaVu', '', 'fonts/DejaVuSans.ttf', uni=True)
+#     pdf.set_font('DejaVu', '', 16)
+
+#     pdf.cell(0, 10, "MTE Evaluation Report", ln=True, align='C')
+#     pdf.ln(10)
+
+#     pdf.set_font("DejaVu", '', 12)
+
+#     def add_bullet_section(title, items):
+#         if not items:
+#             return
+#         pdf.set_font("DejaVu", '', 12)
+#         pdf.cell(0, 10, f"{title}:", ln=True)
+#         for item in items:
+#             pdf.multi_cell(0, 8, f"• {item}")
+#         pdf.ln(5)
+
+#     add_bullet_section("Strengths", strengths)
+#     add_bullet_section("Areas for Improvement", areas_for_improvement)
+#     add_bullet_section("Suggestions", suggestions)
+
+#     pdf.set_font("DejaVu", '', 12)
+#     pdf.cell(0, 10, "Section-wise Evaluation:", ln=True)
+#     pdf.ln(5)
+
+#     for section, details in section_scores.items():
+#         section_title = section.replace("_", " ").title()
+#         pdf.cell(0, 10, f"[{section_title}] (Score: {details['score']})", ln=True)
+#         pdf.multi_cell(0, 8, f"• Reason: {details['reason']}")
+#         pdf.multi_cell(0, 8, f"• Feedback: {details['feedback']}")
+#         pdf.multi_cell(0, 8, f"• Suggestions: {details['suggestions']}")
+#         pdf.ln(5)
+
+#     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+#     pdf.output(pdf_path)
+
+# def send_email_with_attachment(service, to, subject, body_text, file_path, user_id='me'):
+#     message = EmailMessage()
+#     message['To'] = to
+#     message['From'] = user_id
+#     message['Subject'] = subject
+#     message.set_content(body_text)
+
+#     with open(file_path, 'rb') as f:
+#         file_data = f.read()
+#         file_name = os.path.basename(file_path)
+#     message.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+#     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+#     create_message = {'raw': encoded_message}
+#     send_message = service.users().messages().send(userId=user_id, body=create_message).execute()
+#     print(f'Message sent. ID: {send_message["id"]}')
+
+# def main():
+#     os.makedirs("downloads", exist_ok=True)
+#     os.makedirs("reports", exist_ok=True)
+
+#     creds = authenticate_gmail()
+#     service = build('gmail', 'v1', credentials=creds)
+
+#     messages = get_unread_messages(service)
+#     print(f'Found {len(messages)} unread messages.')
+
+#     for msg in messages:
+#         mime_msg = get_message(service, msg['id'])
+#         if not mime_msg:
+#             continue
+
+#         sender = mime_msg['From']
+#         subject = mime_msg['Subject']
+#         print(f'Processing email from {sender} | Subject: {subject}')
+
+#         attachment_path = save_attachment(mime_msg, 'downloads')
+#         if attachment_path:
+#             print(f'Attachment saved: {attachment_path}')
+#             mte_data = extract_mte_data(attachment_path)
+#             feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
+
+#             pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
+#             pdf_path = os.path.join('reports', pdf_filename)
+#             generate_pdf(feedback, pdf_path)
+
+#             print(f'Generated PDF: {pdf_path}')
+#             send_email_with_attachment(
+#                 service=service,
+#                 to=sender,
+#                 subject='MTE Feedback Report',
+#                 body_text='Dear Student,\n\nPlease find your MTE Feedback Report attached.\n\nRegards,\nGuruji Foundation',
+#                 file_path=pdf_path
+#             )
+#             mark_as_read(service, msg['id'])  # ✅ Mark as read after successful processing
+#         else:
+#             print('No valid Excel file found in the email.')
+#             mark_as_read(service, msg['id'])  # Optionally mark as read even without valid attachment
+
+# if __name__ == '__main__':
+#     main()
+
+
+# import os
+# import base64
+# import io
+# from email import message_from_bytes
+# from email.message import EmailMessage
+# from fpdf import FPDF
+# from google.auth.transport.requests import Request
+# from google.oauth2.credentials import Credentials
+# from google_auth_oauthlib.flow import InstalledAppFlow
+# from googleapiclient.discovery import build
+# from googleapiclient.http import MediaFileUpload
+# from evaluator import evaluate_mte
+# from utils import extract_mte_data
+
+# # Scopes for Gmail and Drive APIs
+# SCOPES = [
+#     'https://www.googleapis.com/auth/gmail.modify',
+#     'https://www.googleapis.com/auth/drive.file'
+# ]
+
+# def authenticate_services():
+#     creds = None
+#     if os.path.exists('token.json'):
+#         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+#     if not creds or not creds.valid:
+#         if creds and creds.expired and creds.refresh_token:
+#             creds.refresh(Request())
+#         else:
+#             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+#             creds = flow.run_local_server(port=0)
+#         with open('token.json', 'w') as token:
+#             token.write(creds.to_json())
+#     gmail_service = build('gmail', 'v1', credentials=creds)
+#     drive_service = build('drive', 'v3', credentials=creds)
+#     return gmail_service, drive_service
+
+# def get_unread_messages(service, user_id='me'):
+#     try:
+#         response = service.users().messages().list(userId=user_id, labelIds=['INBOX'], q="is:unread").execute()
+#         return response.get('messages', [])
+#     except Exception as error:
+#         print(f'Error fetching messages: {error}')
+#         return []
+
+# def get_message(service, msg_id, user_id='me'):
+#     try:
+#         message = service.users().messages().get(userId=user_id, id=msg_id, format='raw').execute()
+#         msg_str = base64.urlsafe_b64decode(message['raw'].encode('ASCII'))
+#         return message_from_bytes(msg_str)
+#     except Exception as error:
+#         print(f'Error fetching message: {error}')
+#         return None
+
+# def mark_as_read(service, msg_id, user_id='me'):
+#     try:
+#         service.users().messages().modify(
+#             userId=user_id,
+#             id=msg_id,
+#             body={'removeLabelIds': ['UNREAD']}
+#         ).execute()
+#     except Exception as error:
+#         print(f'Error marking message as read: {error}')
+
+# def save_attachment(mime_msg, download_folder):
+#     for part in mime_msg.walk():
+#         if part.get_content_maintype() == 'multipart':
+#             continue
+#         if part.get('Content-Disposition') is None:
+#             continue
+#         filename = part.get_filename()
+#         if filename and filename.endswith('.xlsx'):
+#             os.makedirs(download_folder, exist_ok=True)
+#             filepath = os.path.join(download_folder, filename)
+#             with open(filepath, 'wb') as f:
+#                 f.write(part.get_payload(decode=True))
+#             return filepath
+#     return None
+
+# def generate_pdf(feedback, pdf_path):
+#     section_scores = feedback.get("section_scores", {})
+#     overall_score = feedback.get("overall_score", "N/A")
+#     strengths = feedback.get("strengths", [])
+#     areas_for_improvement = feedback.get("areas_for_improvement", [])
+#     suggestions = feedback.get("suggestions", [])
+
+#     pdf = FPDF()
+#     pdf.add_page()
+#     pdf.set_auto_page_break(auto=True, margin=15)
+
+#     # Load DejaVu font (Unicode-capable)
+#     font_path = 'fonts/DejaVuSans.ttf'
+#     if not os.path.exists(font_path):
+#         print(f"Font file not found at {font_path}. Please ensure the font file exists.")
+#         return
+#     pdf.add_font('DejaVu', '', font_path, uni=True)
+#     pdf.set_font('DejaVu', '', 16)
+
+#     pdf.cell(0, 10, "MTE Evaluation Report", ln=True, align='C')
+#     pdf.ln(10)
+
+#     pdf.set_font("DejaVu", '', 12)
+
+#     def add_bullet_section(title, items):
+#         if not items:
+#             return
+#         pdf.set_font("DejaVu", '', 12)
+#         pdf.cell(0, 10, f"{title}:", ln=True)
+#         for item in items:
+#             pdf.multi_cell(0, 8, f"• {item}")
+#         pdf.ln(5)
+
+#     add_bullet_section("Strengths", strengths)
+#     add_bullet_section("Areas for Improvement", areas_for_improvement)
+#     add_bullet_section("Suggestions", suggestions)
+
+#     pdf.set_font("DejaVu", '', 12)
+#     pdf.cell(0, 10, "Section-wise Evaluation:", ln=True)
+#     pdf.ln(5)
+
+#     for section, details in section_scores.items():
+#         section_title = section.replace("_", " ").title()
+#         pdf.cell(0, 10, f"[{section_title}] (Score: {details['score']})", ln=True)
+#         pdf.multi_cell(0, 8, f"• Reason: {details['reason']}")
+#         pdf.multi_cell(0, 8, f"• Feedback: {details['feedback']}")
+#         pdf.multi_cell(0, 8, f"• Suggestions: {details['suggestions']}")
+#         pdf.ln(5)
+
+#     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+#     pdf.output(pdf_path)
+
+# def send_email_with_attachment(service, to, cc, subject, body_text, file_path, user_id='me'):
+#     message = EmailMessage()
+#     message['To'] = to
+#     message['Cc'] = cc
+#     message['From'] = user_id
+#     message['Subject'] = subject
+#     message.set_content(body_text)
+
+#     with open(file_path, 'rb') as f:
+#         file_data = f.read()
+#         file_name = os.path.basename(file_path)
+#     message.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+#     encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+#     create_message = {'raw': encoded_message}
+#     send_message = service.users().messages().send(userId=user_id, body=create_message).execute()
+#     print(f'Message sent. ID: {send_message["id"]}')
+
+# def create_folder(service, name, parent_id=None):
+#     file_metadata = {
+#         'name': name,
+#         'mimeType': 'application/vnd.google-apps.folder'
+#     }
+#     if parent_id:
+#         file_metadata['parents'] = [parent_id]
+#     folder = service.files().create(body=file_metadata, fields='id').execute()
+#     return folder.get('id')
+
+# def search_folder(service, name, parent_id=None):
+#     query = f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+#     if parent_id:
+#         query += f" and '{parent_id}' in parents"
+#     results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+#     files = results.get('files', [])
+#     return files[0]['id'] if files else None
+
+# def upload_file(service, file_path, folder_id):
+#     file_metadata = {
+#         'name': os.path.basename(file_path),
+#         'parents': [folder_id]
+#     }
+#     media = MediaFileUpload(file_path, resumable=True)
+#     file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+#     return file.get('id')
+
+# # def main():
+# #     gmail_service, drive_service = authenticate_services()
+
+# #     messages = get_unread_messages(gmail_service)
+# #     print(f'Found {len(messages)} unread messages.')
+
+# #     for msg in messages:
+# #         mime_msg = get_message(gmail_service, msg['id'])
+# #         if not mime_msg:
+# #             continue
+
+# #         sender = mime_msg['From']
+# #         subject = mime_msg['Subject']
+# #         cc = mime_msg.get_all('Cc', [])
+# #         cc_addresses = ', '.join(cc) if cc else ''
+# #         print(f'Processing email from {sender} | Subject: {subject}')
+
+# #         attachment_path = save_attachment(mime_msg, 'downloads')
+# #         if attachment_path:
+# #             print(f'Attachment saved: {attachment_path}')
+# #             mte_data = extract_mte_data(attachment_path)
+# #             feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
+
+# #             pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
+# #             pdf_path = os.path.join('reports', pdf_filename)
+# #             generate_pdf(feedback, pdf_path)
+
+# #             print(f'Generated PDF: {pdf_path}')
+
+# #             # Create or get student folder in Drive
+# #             student_email = sender.split('<')[-1].strip('>')
+# #             student_folder_id = search_folder(drive_service, student_email)
+# #             if not student_folder_id:
+# #                 student_folder_id = create_folder(drive_service, student_email)
+
+# #             # Upload files to Drive
+# #             upload_file(drive_service, attachment_path, student_folder_id)
+# #             upload_file(drive_service, pdf_path, student_folder_id)
+
+# #             # Send email with attachment
+# #             send_email_with_attachment(
+# #                 service=gmail_service,
+# #                 to=student_email,
+# #                 cc=cc_addresses,
+# #                 subject='MTE Feedback Report',
+# #                 body_text='Dear Student,\n\nPlease find your MTE Feedback Report attached.\n\nRegards,\nGuruji Foundation',
+# #                 file_path=pdf_path
+# #             )
+
+# #             # Mark the message as read
+# #             mark_as_read(gmail_service, msg['id'])
+
+# #         else:
+# #             print('No valid Excel file found in the email.')
+
+# def main():
+#     central_authority_email = "dadukatekar@gmail.com"
+
+#     gmail_service, drive_service = authenticate_services()
+#     messages = get_unread_messages(gmail_service)
+#     print(f'Found {len(messages)} unread messages.')
+
+#     for msg in messages:
+#         mime_msg = get_message(gmail_service, msg['id'])
+#         if not mime_msg:
+#             continue
+
+#         sender = mime_msg['From']
+#         subject = mime_msg['Subject']
+#         raw_cc = mime_msg.get_all('Cc', [])
+#         cc_emails = []
+
+#         if raw_cc:
+#             for item in raw_cc:
+#                 cc_emails.extend([addr.strip() for addr in item.split(',')])
+
+#         # Clean sender email (extract from name+email format)
+#         student_email = sender.split('<')[-1].strip('>') if '<' in sender else sender.strip()
+
+#         # Exclude central authority from the list of mentors
+#         mentor_emails = [email for email in cc_emails if email.lower() != central_authority_email.lower()]
+
+#         print(f'Processing email from {student_email} | Subject: {subject} | Mentors: {mentor_emails}')
+
+#         attachment_path = save_attachment(mime_msg, 'downloads')
+#         if attachment_path:
+#             print(f'Attachment saved: {attachment_path}')
+#             mte_data = extract_mte_data(attachment_path)
+#             feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
+
+#             pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
+#             pdf_path = os.path.join('reports', pdf_filename)
+#             generate_pdf(feedback, pdf_path)
+#             print(f'Generated PDF: {pdf_path}')
+
+#             # Create or get student folder in Drive
+#             student_folder_id = search_folder(drive_service, student_email)
+#             if not student_folder_id:
+#                 student_folder_id = create_folder(drive_service, student_email)
+
+#             # Upload files to Drive
+#             upload_file(drive_service, attachment_path, student_folder_id)
+#             upload_file(drive_service, pdf_path, student_folder_id)
+
+#             # Send email to student and mentors only
+#             send_email_with_attachment(
+#                 service=gmail_service,
+#                 to=student_email,
+#                 cc=', '.join(mentor_emails),
+#                 subject='MTE Feedback Report',
+#                 body_text='Dear Student,\n\nPlease find your MTE Feedback Report attached.\n\nRegards,\nGuruji Foundation',
+#                 file_path=pdf_path
+#             )
+
+#             mark_as_read(gmail_service, msg['id'])
+#         else:
+#             print('No valid Excel file found in the email.')
+
+
+# if __name__ == '__main__':
+#     main()
+
+
+# gmail_integration.py
+
+import os
+import base64
+import io
+from email import message_from_bytes
+from email.message import EmailMessage
+from fpdf import FPDF
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from evaluator import evaluate_mte
+from utils import extract_mte_data
+import fitz  # PyMuPDF for reading previous PDF content
+
+# Scopes for Gmail and Drive APIs
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/drive.file'
+]
+
+def authenticate_services():
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    gmail_service = build('gmail', 'v1', credentials=creds)
+    drive_service = build('drive', 'v3', credentials=creds)
+    return gmail_service, drive_service
+
+def get_unread_messages(service, user_id='me'):
+    try:
+        response = service.users().messages().list(userId=user_id, labelIds=['INBOX'], q="is:unread").execute()
+        return response.get('messages', [])
+    except Exception as error:
+        print(f'Error fetching messages: {error}')
+        return []
+
+def get_message(service, msg_id, user_id='me'):
+    try:
+        message = service.users().messages().get(userId=user_id, id=msg_id, format='raw').execute()
+        msg_str = base64.urlsafe_b64decode(message['raw'].encode('ASCII'))
+        return message_from_bytes(msg_str)
+    except Exception as error:
+        print(f'Error fetching message: {error}')
+        return None
+
+def mark_as_read(service, msg_id, user_id='me'):
+    try:
+        service.users().messages().modify(
+            userId=user_id,
+            id=msg_id,
+            body={'removeLabelIds': ['UNREAD']}
+        ).execute()
+    except Exception as error:
+        print(f'Error marking message as read: {error}')
+
+def save_attachment(mime_msg, download_folder):
+    for part in mime_msg.walk():
+        if part.get_content_maintype() == 'multipart':
+            continue
+        if part.get('Content-Disposition') is None:
+            continue
+        filename = part.get_filename()
+        if filename and filename.endswith('.xlsx'):
+            os.makedirs(download_folder, exist_ok=True)
+            filepath = os.path.join(download_folder, filename)
+            with open(filepath, 'wb') as f:
+                f.write(part.get_payload(decode=True))
+            return filepath
+    return None
+
+def extract_overall_score_from_pdf(pdf_path):
+    try:
+        doc = fitz.open(pdf_path)
+        for page in doc:
+            text = page.get_text()
+            if "Overall Score:" in text:
+                line = [l for l in text.split('\n') if "Overall Score:" in l][0]
+                return float(line.split(":")[-1].strip())
+        return None
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return None
+
+def generate_pdf(feedback, pdf_path, comparison_note=None):
+    section_scores = feedback.get("section_scores", {})
+    overall_score = feedback.get("overall_score", "N/A")
+    strengths = feedback.get("strengths", [])
+    areas_for_improvement = feedback.get("areas_for_improvement", [])
+    suggestions = feedback.get("suggestions", [])
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    font_path = 'fonts/DejaVuSans.ttf'
+    if not os.path.exists(font_path):
+        print(f"Font file not found at {font_path}. Please ensure the font file exists.")
+        return
+    pdf.add_font('DejaVu', '', font_path, uni=True)
+    pdf.set_font('DejaVu', '', 16)
+
+    pdf.cell(0, 10, "MTE Evaluation Report", ln=True, align='C')
+    pdf.ln(10)
+
+    pdf.set_font("DejaVu", '', 12)
+
+    # Add comparison note
+    if comparison_note:
+        pdf.set_fill_color(200, 255, 200) if 'improved' in comparison_note.lower() else pdf.set_fill_color(255, 200, 200)
+        pdf.multi_cell(0, 10, comparison_note, fill=True)
+        pdf.ln(5)
+
+    def add_bullet_section(title, items):
+        if not items:
+            return
+        pdf.set_font("DejaVu", '', 12)
+        pdf.cell(0, 10, f"{title}:", ln=True)
+        for item in items:
+            pdf.multi_cell(0, 8, f"• {item}")
+        pdf.ln(5)
+
+    add_bullet_section("Strengths", strengths)
+    add_bullet_section("Areas for Improvement", areas_for_improvement)
+    add_bullet_section("Suggestions", suggestions)
+
+    pdf.cell(0, 10, "Section-wise Evaluation:", ln=True)
+    pdf.ln(5)
+
+    for section, details in section_scores.items():
+        section_title = section.replace("_", " ").title()
+        pdf.cell(0, 10, f"[{section_title}] (Score: {details['score']})", ln=True)
+        pdf.multi_cell(0, 8, f"• Reason: {details['reason']}")
+        pdf.multi_cell(0, 8, f"• Feedback: {details['feedback']}")
+        pdf.multi_cell(0, 8, f"• Suggestions: {details['suggestions']}")
+        pdf.ln(5)
+
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    pdf.output(pdf_path)
+
+def send_email_with_attachment(service, to, cc, subject, body_text, file_path, user_id='me'):
+    message = EmailMessage()
+    message['To'] = to
+    if cc:
+        message['Cc'] = cc
+    message['From'] = user_id
+    message['Subject'] = subject
+    message.set_content(body_text)
+
+    with open(file_path, 'rb') as f:
+        file_data = f.read()
+        file_name = os.path.basename(file_path)
+    message.add_attachment(file_data, maintype='application', subtype='pdf', filename=file_name)
+
+    encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    create_message = {'raw': encoded_message}
+    send_message = service.users().messages().send(userId=user_id, body=create_message).execute()
+    print(f'Message sent. ID: {send_message["id"]}')
+
+def create_folder(service, name, parent_id=None):
+    file_metadata = {
+        'name': name,
+        'mimeType': 'application/vnd.google-apps.folder'
+    }
+    if parent_id:
+        file_metadata['parents'] = [parent_id]
+    folder = service.files().create(body=file_metadata, fields='id').execute()
+    return folder.get('id')
+
+def search_folder(service, name, parent_id=None):
+    query = f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    if parent_id:
+        query += f" and '{parent_id}' in parents"
+    results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+    files = results.get('files', [])
+    return files[0]['id'] if files else None
+
+def upload_file(service, file_path, folder_id):
+    file_metadata = {
+        'name': os.path.basename(file_path),
+        'parents': [folder_id]
+    }
+    media = MediaFileUpload(file_path, resumable=True)
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    return file.get('id')
+
+def main():
+    central_authority_email = "dadukatekar@gmail.com"
+    gmail_service, drive_service = authenticate_services()
+    messages = get_unread_messages(gmail_service)
+    print(f'Found {len(messages)} unread messages.')
+
+    for msg in messages:
+        mime_msg = get_message(gmail_service, msg['id'])
+        if not mime_msg:
+            continue
+
+        sender = mime_msg['From']
+        subject = mime_msg['Subject']
+        raw_cc = mime_msg.get_all('Cc', [])
+        cc_emails = []
+
+        if raw_cc:
+            for item in raw_cc:
+                cc_emails.extend([addr.strip() for addr in item.split(',')])
+
+        student_email = sender.split('<')[-1].strip('>') if '<' in sender else sender.strip()
+        mentor_emails = [email for email in cc_emails if email.lower() != central_authority_email.lower()]
+        print(f'Processing email from {student_email} | Subject: {subject} | Mentors: {mentor_emails}')
+
+        attachment_path = save_attachment(mime_msg, 'downloads')
+        if attachment_path:
+            print(f'Attachment saved: {attachment_path}')
+            mte_data = extract_mte_data(attachment_path)
+            feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
+
+            student_folder_id = search_folder(drive_service, student_email)
+            if not student_folder_id:
+                student_folder_id = create_folder(drive_service, student_email)
+
+            pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
+            pdf_path = os.path.join('reports', pdf_filename)
+
+            # Check for previous report
+            previous_reports = [f for f in os.listdir('reports') if f.startswith(os.path.splitext(os.path.basename(attachment_path))[0].split('_')[0])]
+            previous_score = None
+            if previous_reports:
+                previous_file = os.path.join('reports', sorted(previous_reports)[-1])
+                previous_score = extract_overall_score_from_pdf(previous_file)
+
+            current_score = feedback.get("overall_score", None)
+            comparison_note = None
+            if previous_score and current_score:
+                if float(current_score) > float(previous_score):
+                    comparison_note = f"Performance improved from {previous_score} to {current_score}."
+                elif float(current_score) < float(previous_score):
+                    comparison_note = f"Performance declined from {previous_score} to {current_score}."
+                else:
+                    comparison_note = "Performance remained the same as last time."
+
+            generate_pdf(feedback, pdf_path, comparison_note=comparison_note)
+            print(f'Generated PDF: {pdf_path}')
+
+            upload_file(drive_service, attachment_path, student_folder_id)
+            upload_file(drive_service, pdf_path, student_folder_id)
+
+            # Send to student
+            send_email_with_attachment(
+                service=gmail_service,
+                to=student_email,
+                cc="",
+                subject='MTE Feedback Report',
+                body_text='Dear Student,\n\nPlease find your MTE Feedback Report attached.\n\nRegards,\nGuruji Foundation',
+                file_path=pdf_path
+            )
+
+            # Send to mentors (if any)
+            if mentor_emails:
+                send_email_with_attachment(
+                    service=gmail_service,
+                    to=", ".join(mentor_emails),
+                    cc="",
+                    subject='MTE Feedback Report of Your Student',
+                    body_text='Dear Mentor,\n\nPlease find your student\'s MTE Feedback Report attached.\n\nRegards,\nGuruji Foundation',
+                    file_path=pdf_path
+                )
+
+            mark_as_read(gmail_service, msg['id'])
+        else:
+            print('No valid Excel file found in the email.')
+
+if __name__ == '__main__':
+    main()
