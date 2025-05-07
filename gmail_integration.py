@@ -86,83 +86,6 @@ def save_attachment(mime_msg, download_folder):
     return None
 
 
-
-# def generate_pdf(feedback, pdf_path):
-#     from fpdf import FPDF
-#     import os
-#     from datetime import datetime
-
-#     # Extract relevant data from feedback
-#     section_scores = feedback.get("section_scores", {})
-#     strengths = feedback.get("strengths", [])
-#     areas_for_improvement = feedback.get("areas_for_improvement", [])
-#     suggestions = feedback.get("suggestions", [])
-
-#     # Add metadata
-#     student_name = feedback.get("student_name", "N/A")
-#     submission_month = feedback.get("submission_month", "N/A")
-#     college_name = feedback.get("college_name", "N/A")
-#     student_class = feedback.get("class_info", "N/A")
-#     generation_date = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-
-#     # Initialize PDF
-#     pdf = FPDF()
-#     pdf.add_page()
-#     pdf.set_auto_page_break(auto=True, margin=15)
-
-#     font_path = 'fonts/DejaVuSans.ttf'
-#     if not os.path.exists(font_path):
-#         print(f"Font file not found at {font_path}.")
-#         return
-#     pdf.add_font('DejaVu', '', font_path, uni=True)
-#     pdf.set_font('DejaVu', '', 16)
-
-#     # Title
-#     pdf.cell(0, 10, "MTE Evaluation Report", ln=True, align='C')
-#     pdf.ln(10)
-
-#     # Set font for body text
-#     pdf.set_font("DejaVu", '', 12)
-
-#     # Student details section
-#     pdf.multi_cell(0, 10, f"Name of the Student: {student_name}")
-#     pdf.multi_cell(0, 10, f"Submission Month: {submission_month}")
-#     pdf.multi_cell(0, 10, f"College Name: {college_name}")
-#     pdf.multi_cell(0, 10, f"Class: {student_class}")
-#     pdf.multi_cell(0, 10, f"PDF Generated On: {generation_date}")
-#     pdf.ln(5)
-
-#     # Utility function for bullet sections
-#     def add_bullet_section(title, items):
-#         if not items:
-#             return
-#         pdf.cell(0, 10, f"{title}:", ln=True)
-#         for item in items:
-#             pdf.multi_cell(0, 8, f"• {item}")
-#         pdf.ln(5)
-
-#     # Add strengths, areas for improvement, and suggestions
-#     add_bullet_section("Strengths", strengths)
-#     add_bullet_section("Areas for Improvement", areas_for_improvement)
-#     add_bullet_section("Suggestions", suggestions)
-
-#     # Section-wise Scores
-#     if section_scores:
-#         pdf.cell(0, 10, "Section-wise Evaluation:", ln=True)
-#         pdf.ln(5)
-#         for section, details in section_scores.items():
-#             section_title = section.replace("_", " ").title()
-#             pdf.cell(0, 10, f"[{section_title}] (Score: {details['score']})", ln=True)
-#             pdf.multi_cell(0, 8, f"• Reason: {details['reason']}")
-#             pdf.multi_cell(0, 8, f"• Feedback: {details['feedback']}")
-#             pdf.multi_cell(0, 8, f"• Suggestions: {details['suggestions']}")
-#             pdf.ln(5)
-
-#     # Save PDF
-#     os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-#     pdf.output(pdf_path)
-
-
 def generate_pdf(feedback, pdf_path):
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
@@ -430,9 +353,6 @@ Guruji Foundation
             mark_as_read(gmail_service, msg['id'])
         else:
             print('No valid Excel file found in the email.')
-
-
-
 
 
 if __name__ == '__main__':

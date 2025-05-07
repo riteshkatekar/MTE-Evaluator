@@ -13,5 +13,3 @@ __pycache__/
 *.pyc
 
 
-# local or production level
-app/config.py

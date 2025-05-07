@@ -14,17 +14,4 @@ CONFIG = {
 }
 
 
-# import os
 
-# ENV = os.getenv("ENV", "local")  # Default to production
-
-# CONFIG = {
-#     "local": {
-#         "central_authority_email": os.getenv("LOCAL_EMAIL", "dadukatekar@gmail.com"),
-#         "user_id": "me",
-#     },
-#     "production": {
-#         "central_authority_email": os.getenv("PROD_EMAIL", "monthly.thinking@gurujifoundation.in"),
-#         "user_id": os.getenv("PROD_EMAIL", "monthly.thinking@gurujifoundation.in"),
-#     }
-# }
