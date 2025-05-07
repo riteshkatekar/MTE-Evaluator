@@ -17,7 +17,6 @@ from config import CONFIG, ENV
 from datetime import datetime
 from fpdf.enums import XPos, YPos
 
-
 # Get environment-specific configuration
 central_authority_email = CONFIG[ENV]["central_authority_email"]
 user_id = CONFIG[ENV]["user_id"]
@@ -86,12 +85,8 @@ def save_attachment(mime_msg, download_folder):
     return None
 
 
-def generate_pdf(feedback, pdf_path):
-    from fpdf import FPDF
-    from fpdf.enums import XPos, YPos
-    import os
-    from datetime import datetime
 
+def generate_pdf(feedback, pdf_path):
     # Extract relevant data
     section_scores = feedback.get("section_scores", {})
     strengths = feedback.get("strengths", [])
@@ -115,7 +110,7 @@ def generate_pdf(feedback, pdf_path):
     if not os.path.exists(font_path):
         print(f"Font file not found at {font_path}.")
         return
-    pdf.add_font('DejaVu', '', font_path)  # Removed deprecated 'uni' param
+    pdf.add_font('DejaVu', '', font_path)
     pdf.add_font('DejaVu', 'B', font_path_bold)
     pdf.set_font('DejaVu', '', 16)
 
@@ -126,11 +121,11 @@ def generate_pdf(feedback, pdf_path):
 
     # Student details
     student_details = [
-        f"👤 Name of the Student: {student_name}",
-        f"📅 Submission Month: {submission_month}",
-        f"🏫 College Name: {college_name}",
-        f"🏷️ Class: {student_class}",
-        f"🕒 PDF Generated On: {generation_date}"
+        f"Name of the Student: {student_name}",
+        f"Submission Month: {submission_month}",
+        f"College Name: {college_name}",
+        f"Class: {student_class}",
+        f"PDF Generated On: {generation_date}"
     ]
     for line in student_details:
         pdf.multi_cell(0, 8, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -138,14 +133,13 @@ def generate_pdf(feedback, pdf_path):
     pdf.ln(5)
 
     # Utility function for bullets
-    def add_bullet_section(title, items, icon):
+    def add_bullet_section(title, items):
         if not items:
             return
         pdf.set_font("DejaVu", 'B', 12)
-        pdf.cell(0, 10, f"{icon} {title}:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 10, f"{title}:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("DejaVu", '', 12)
         for item in items:
-            # Handle overly long lines
             if max((len(w) for w in item.split()), default=0) > 80:
                 pdf.set_font("DejaVu", '', 10)
                 pdf.multi_cell(0, 8, f"• {item}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -155,20 +149,20 @@ def generate_pdf(feedback, pdf_path):
         pdf.ln(3)
 
     # Add bullet sections
-    add_bullet_section("Strengths", strengths, "💪")
-    add_bullet_section("Areas for Improvement", areas_for_improvement, "⚠️")
-    add_bullet_section("Suggestions", suggestions, "✅")
+    add_bullet_section("Strengths", strengths)
+    add_bullet_section("Areas for Improvement", areas_for_improvement)
+    add_bullet_section("Suggestions", suggestions)
 
     # Section-wise Scores
     if section_scores:
         pdf.set_font("DejaVu", 'B', 12)
-        pdf.cell(0, 10, "📊 Section-wise Evaluation:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 10, "Section-wise Evaluation:", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("DejaVu", '', 12)
         pdf.ln(3)
         for section, details in section_scores.items():
             section_title = section.replace("_", " ").title()
             pdf.set_font("DejaVu", 'B', 12)
-            pdf.cell(0, 10, f"📌 {section_title} (Score: {details['score']})", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.cell(0, 10, f"{section_title} (Score: {details['score']})", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_font("DejaVu", '', 12)
             lines = [
                 f"• Reason: {details['reason']}",
@@ -247,9 +241,9 @@ def main():
     messages = get_unread_messages(gmail_service)
     print(f'Found {len(messages)} unread messages.')
 
-    mte_folder_id = search_folder(drive_service, 'MTE')
+    mte_folder_id = search_folder(drive_service, 'MTE_Submissions')
     if not mte_folder_id:
-        mte_folder_id = create_folder(drive_service, 'MTE')
+        mte_folder_id = create_folder(drive_service, 'MTE_Submissions')
 
     for msg in messages:
         mime_msg = get_message(gmail_service, msg['id'])
@@ -273,44 +267,51 @@ def main():
         if attachment_path:
             print(f'Attachment saved: {attachment_path}')
             mte_data = extract_mte_data(attachment_path)
-            # feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
 
+            # Extract student metadata
+            student_name = mte_data.get("student_name", "N/A")
+            submission_month = mte_data.get("submission_month", "N/A")
+            college_name = mte_data.get("college_name", "N/A")
+            student_class = mte_data.get("class_info", "N/A")
+
+            # Evaluate and enrich feedback
             feedback = evaluate_mte(mte_data, selected_model='deepseek-r1-distill-llama-70b')
 
-            
-            # Ensure metadata is passed forward
             feedback.update({
-                "student_name": mte_data.get("student_name", "N/A"),
-                "submission_month": mte_data.get("submission_month", "N/A"),
-                "college_name": mte_data.get("college_name", "N/A"),
-                "class_info": mte_data.get("class_info", "N/A")
+                "student_name": student_name,
+                "submission_month": submission_month,
+                "college_name": college_name,
+                "class_info": student_class
             })
 
-
+            # Create student folder if not exists
             student_folder_id = search_folder(drive_service, student_email, parent_id=mte_folder_id)
             if not student_folder_id:
                 student_folder_id = create_folder(drive_service, student_email, parent_id=mte_folder_id)
 
+            # Generate PDF path
             pdf_filename = os.path.splitext(os.path.basename(attachment_path))[0] + '_feedback.pdf'
             pdf_path = os.path.join('reports', pdf_filename)
 
+            # Generate PDF
             generate_pdf(feedback, pdf_path)
             print(f'Generated PDF: {pdf_path}')
 
+            # Upload both original and feedback
             upload_file(drive_service, attachment_path, student_folder_id)
             upload_file(drive_service, pdf_path, student_folder_id)
 
-            # Prepare metadata for email body
+            # Prepare metadata for email body using variables, not feedback.get()
             metadata_text = f"""
-Name of the Student: {feedback.get("student_name", "N/A")}
-Submission Month: {feedback.get("submission_month", "N/A")}
-College Name: {feedback.get("college_name", "N/A")}
-Class: {feedback.get("class_info", "N/A")}
+Name of the Student: {student_name}
+Submission Month: {submission_month}
+College Name: {college_name}
+Class: {student_class}
 Report generated on: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
 """
 
             # Send to Student
-            student_body_text = f"""Dear {feedback.get("student_name", "Student")},
+            student_body_text = f"""Dear {student_name},
 
 Please find your MTE Feedback Report attached.
 
@@ -351,6 +352,7 @@ Guruji Foundation
                 )
 
             mark_as_read(gmail_service, msg['id'])
+
         else:
             print('No valid Excel file found in the email.')
 

@@ -1,11 +1,13 @@
 # utils.py
 import json
+import unicodedata
 from openpyxl import load_workbook
 from openpyxl.styles.borders import Border
 from collections import deque
 import os
 import re
 from datetime import datetime
+from openpyxl.styles import Border
 
 def load_json():
     """
@@ -46,34 +48,27 @@ def extract_mte_data(file_path):
         workbook = load_workbook(file_path)
         sheet = workbook.worksheets[0]
 
-        # --- Extract raw metadata lines ---
-        raw_student_info = normalize(sheet.cell(2, 2).value)
-        raw_college_info = normalize(sheet.cell(4, 2).value)
+        # --- Extract raw metadata lines (Rows 2 and 4 expected, fallback if missing) ---
+        raw_student_info = normalize(sheet.cell(2, 2).value or "")
+        raw_college_info = normalize(sheet.cell(4, 2).value or "")
 
-        print(f"\nDebug - Row 2: {repr(raw_student_info)}")
-        print(f"Debug - Row 4: {repr(raw_college_info)}")
-
-        # --- Extract Name and Month ---
+        # --- Extract Name and Month robustly ---
         student_name, submission_month = "N/A", "N/A"
-        match = re.search(r"Student:\s*(.*?)\s+for\s+the\s+month\s+of\s+([A-Za-z]+)", raw_student_info, re.IGNORECASE)
-        if match:
-            student_name = match.group(1).strip()
-            submission_month = f"{match.group(2).capitalize()} , {datetime.now().year}"
+        student_match = re.search(r"Student\s*[:\-]?\s*(.+?)\s+for\s+the\s+month\s+of\s+([A-Za-z]+)", raw_student_info, re.IGNORECASE)
+        if student_match:
+            student_name = student_match.group(1).strip()
+            submission_month = f"{student_match.group(2).capitalize()} , {datetime.now().year}"
 
-        # --- Clean and Normalize Metadata Lines ---
+        # --- Clean and Normalize College/Class Line ---
         raw_college_info_clean = re.sub(r"[_\s]+", " ", raw_college_info).strip()
 
-        # --- Extract College and Class Info Robustly ---
         college_name, class_info = "N/A", "N/A"
-
-        match_college = re.search(r"College:\s*(.+?)\s+Year\s+of\s+Study:", raw_college_info_clean, re.IGNORECASE)
-        match_year = re.search(r"Year\s+of\s+Study:\s*(.+)", raw_college_info_clean, re.IGNORECASE)
-
+        match_college = re.search(r"College\s*[:\-]?\s*(.+?)\s+Year\s+of\s+Study", raw_college_info_clean, re.IGNORECASE)
+        match_year = re.search(r"Year\s+of\s+Study\s*[:\-]?\s*(.+)", raw_college_info_clean, re.IGNORECASE)
         if match_college:
             college_name = match_college.group(1).strip()
         if match_year:
             class_info = match_year.group(1).strip()
-
 
         # --- Extract bordered tables ---
         border_map = {}
@@ -91,17 +86,14 @@ def extract_mte_data(file_path):
                 group = []
                 queue = deque([cell])
                 visited.add(cell)
-
                 while queue:
                     current = queue.popleft()
                     group.append(current)
-
                     for dr, dc in directions:
                         neighbor = (current[0] + dr, current[1] + dc)
                         if neighbor in border_map and neighbor not in visited:
                             visited.add(neighbor)
                             queue.append(neighbor)
-
                 groups.append(group)
 
         extracted_tables = []
@@ -126,9 +118,8 @@ def extract_mte_data(file_path):
                 rows_as_string = "\n".join("    " + " | ".join(row) for row in table[1:])
                 extracted_tables.append({"heading": heading.strip(), "rows": rows_as_string.strip()})
 
-        # Initialize mte_dict before use!
+        # --- Map headings to dictionary keys ---
         mte_dict = {}
-
         heading_to_key_map = {
             "Academic Progress / Vacation Plan": "academic_progress",
             "Co and Extra Curricular Progress-Plan": "co-curricular",
@@ -167,11 +158,6 @@ def extract_mte_data(file_path):
 
     except Exception as e:
         return {"error": f"Error extracting data: {e}"}
-
-
-
-
-
 
 
 
