@@ -1,45 +1,59 @@
-# MTE Evaluator
+# 📊 MTE Evaluator
 
-This is an automated system for evaluating Monthly Thinking Exercises (MTEs) submitted via email. It processes `.xlsx` files, generates PDF feedback, and stores everything on Google Drive.
+This is an automated system for evaluating Monthly Thinking Exercises (MTEs) submitted via email. It processes `.xlsx` submissions, uses AI to generate section-wise feedback, creates a detailed PDF report, and stores all materials in Google Drive student folders.
+
+---
 
 ## 🚀 Features
 
-- Gmail API integration for email and attachment fetching.
-- AI-based feedback generation (section-wise).
-- PDF report generation with Unicode support.
-- Google Drive API for student folder management and report uploads.
+- 📥 **Gmail API integration** to fetch unread MTE emails with `.xlsx` attachments  
+- 🤖 **AI-powered section-wise evaluation** (GPT-based model via Groq API)  
+- 🧾 **PDF feedback generation** with Unicode support and full student content  
+- ☁️ **Google Drive integration**: automatic upload to student-specific folders  
+- 📤 **Auto email report dispatch** to student and mentor  
 
 ---
 
-## 🔐 Required Files (Not Included in Repository)
+## 🔐 Required Files (Manually Place in `app/` Folder)
 
-Please manually add these **required files** in the `app/` folder:
+These files are **excluded from version control** via `.gitignore`:
 
-| File | Purpose |
-|------|---------|
-| `credentials.json` | OAuth2 credentials from Google Cloud |
-| `token.json` | Generated after first successful OAuth2 login |
-| `system_config.json` | Student-to-folder mappings for Drive upload |
+| File                 | Purpose                                         |
+|----------------------|-------------------------------------------------|
+| `credentials.json`   | Google Cloud OAuth 2.0 credentials              |
+| `token.json`         | Generated after first successful OAuth login    |
+| `system_config.json` | Mapping of student names/emails to Drive folders|
 
-**These files are excluded via `.gitignore` for security.**
-
----
-
-## 📁 Folder Structure (Auto-created if missing)
-
-These folders will be created on runtime:
-
-- `downloads/`: Incoming `.xlsx` files from Gmail
-- `reports/`: Generated PDF reports
+> ⚠️ **Do not share these files publicly.** They contain sensitive credentials.
 
 ---
 
-## ⚙️ Running the Project
+## 📁 Folder Structure (Auto-Created)
 
-Run the main script:
+These folders will be automatically created at runtime:
+
+- `downloads/` → Incoming `.xlsx` MTE files from Gmail  
+- `reports/` → Generated PDF feedback reports  
+
+---
+
+## ⚙️ How to Run
+
+Ensure all required files are present in the `app/` directory, then run the app:
 
 ```bash
 streamlit run main.py
 
+##📬 Automated Email-Based Evaluation (Gmail + Google Drive)
+- To activate the Google Workspace integration that automatically:
 
+- Fetches .xlsx MTEs from Gmail
 
+- Processes and evaluates each file
+
+- Sends PDF reports to students and mentors
+
+- Uploads files to Google Drive
+
+```bash
+python gmail_integration.py
