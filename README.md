@@ -39,4 +39,7 @@ These folders will be created on runtime:
 Run the main script:
 
 ```bash
-python main.py
+streamlit run main.py
+
+
+
