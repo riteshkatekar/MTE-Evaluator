@@ -43,7 +43,9 @@ Ensure all required files are present in the `app/` directory, then run the app:
 
 ```bash
 streamlit run main.py
+```
 
+---
 ##📬 Automated Email-Based Evaluation (Gmail + Google Drive)
 - To activate the Google Workspace integration that automatically:
 
@@ -57,3 +59,4 @@ streamlit run main.py
 
 ```bash
 python gmail_integration.py
+```
