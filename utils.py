@@ -1,9 +1,12 @@
 # utils.py
+
 import json
 from openpyxl import load_workbook
 from openpyxl.styles.borders import Border
 from collections import deque
 import os
+import re
+from datetime import datetime
 
 def load_json():
     """
@@ -28,32 +31,187 @@ def get_api_key_from_json(key_name):
         print(f"{key_name} not found in the JSON file.")
         return None
 
+# def extract_mte_data(file_path):
+#     """
+#     Extracts Monthly Thinking Exercise (MTE) data from an uploaded Excel file.
+#     """
+#     try:
+#         workbook = load_workbook(file_path)
+#         sheet = workbook.worksheets[0]
+
+#         def has_border(cell):
+#             border: Border = cell.border
+#             sides = [border.left, border.right, border.top, border.bottom]
+#             return any(side.style is not None for side in sides)
+
+#         def clean_text(value):
+#             if not isinstance(value, str):
+#                 return value
+#             value = value.replace('“', '"').replace('”', '"')
+#             value = value.replace('‘', "'").replace('’', "'")
+#             return value
+
+#         border_map = {}
+#         for row in sheet.iter_rows():
+#             for cell in row:
+#                 if has_border(cell):
+#                     cleaned_value = clean_text(cell.value)
+#                     border_map[(cell.row, cell.column)] = cleaned_value
+
+#         visited = set()
+#         groups = []
+#         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+#         for cell in border_map:
+#             if cell not in visited:
+#                 group = []
+#                 queue = deque([cell])
+#                 visited.add(cell)
+
+#                 while queue:
+#                     current = queue.popleft()
+#                     group.append(current)
+
+#                     for dr, dc in directions:
+#                         neighbor = (current[0] + dr, current[1] + dc)
+#                         if neighbor in border_map and neighbor not in visited:
+#                             visited.add(neighbor)
+#                             queue.append(neighbor)
+
+#                 groups.append(group)
+
+#         extracted_tables = []
+
+#         for group in groups:
+#             rows = [r for r, _ in group]
+#             cols = [c for _, c in group]
+#             min_row, max_row = min(rows), max(rows)
+#             min_col, max_col = min(cols), max(cols)
+
+#             table = []
+#             for r in range(min_row, max_row + 1):
+#                 row_data = []
+#                 for c in range(min_col, max_col + 1):
+#                     value = clean_text(sheet.cell(r, c).value)
+#                     if value is not None:
+#                         row_data.append(value)
+#                 if row_data:
+#                     table.append(row_data)
+
+#             if table:
+#                 heading_list = table[0]
+#                 data_rows = table[1:]
+
+#                 heading = " ".join(str(item) for item in heading_list)
+
+#                 row_strings = ["    " + " ".join(str(item) for item in row) for row in data_rows]
+#                 rows_as_string = "\n".join(row_strings)
+
+#                 extracted_tables.append({
+#                     "heading": heading,
+#                     "rows": rows_as_string
+#                 })
+
+#         mte_dict = {
+#             "academic_progress": "",
+#             "co-curricular": "",
+#             "financial_needs": "",
+#             "difficulties": "",
+#             "exam_results": "",
+#             "books_and_videos": "",
+#             "health": "",
+#             "learning_from_people": "",
+#             "essay": "",
+#             "action_plan": ""
+#         }
+
+#         heading_to_key_map = {
+#             "Academic Progress / Vacation Plan": "academic_progress",
+#             "Co and Extra Curricular Progress-Plan": "co-curricular",
+#             "Fin Reqm for the next 3 months (Details Please)": "financial_needs",
+#             "Difficulties (Social, Family, etc.)": "difficulties",
+#             "Results of the exams (Regular college / university and other exams):": "exam_results",
+#             "Reading Books / Watching Videos": "books_and_videos",
+#             "Its very important to exercise regularly and eat and sleep properly": "health",
+#             "New friends or acquaintances made and what you learnt from them": "learning_from_people",
+#             "Essay on a topic of your choice including learning from the books read (Pl write in your own words, don't copy from the internet)": "essay",
+#             "Action Plan for the coming month": "action_plan"
+#         }
+
+#         for table in extracted_tables:
+#             heading = table['heading'].strip()
+#             content = table['rows'].strip()
+
+#             for expected_heading, dict_key in heading_to_key_map.items():
+#                 if expected_heading in heading:
+#                     mte_dict[dict_key] = content
+#                     break
+
+#         return mte_dict
+
+#     except Exception as e:
+#         return {"error": f"Error extracting data: {e}"}
+
+
+
+
+import re
+import unicodedata
+from openpyxl import load_workbook
+from openpyxl.styles import Border
+from collections import deque
+from datetime import datetime
+
 def extract_mte_data(file_path):
-    """
-    Extracts Monthly Thinking Exercise (MTE) data from an uploaded Excel file.
-    """
+    def normalize(value):
+        if not isinstance(value, str):
+            return ""
+        return unicodedata.normalize("NFKD", value).strip()
+
+    def has_border(cell):
+        border: Border = cell.border
+        sides = [border.left, border.right, border.top, border.bottom]
+        return any(side.style is not None for side in sides)
+
     try:
         workbook = load_workbook(file_path)
         sheet = workbook.worksheets[0]
 
-        def has_border(cell):
-            border: Border = cell.border
-            sides = [border.left, border.right, border.top, border.bottom]
-            return any(side.style is not None for side in sides)
+        # --- Extract raw metadata lines ---
+        raw_student_info = normalize(sheet.cell(2, 2).value)
+        raw_college_info = normalize(sheet.cell(4, 2).value)
 
-        def clean_text(value):
-            if not isinstance(value, str):
-                return value
-            value = value.replace('“', '"').replace('”', '"')
-            value = value.replace('‘', "'").replace('’', "'")
-            return value
+        print(f"\nDebug - Row 2: {repr(raw_student_info)}")
+        print(f"Debug - Row 4: {repr(raw_college_info)}")
 
+        # --- Extract Name and Month ---
+        student_name, submission_month = "N/A", "N/A"
+        match = re.search(r"Student:\s*(.*?)\s+for\s+the\s+month\s+of\s+([A-Za-z]+)", raw_student_info, re.IGNORECASE)
+        if match:
+            student_name = match.group(1).strip()
+            submission_month = f"{match.group(2).capitalize()} , {datetime.now().year}"
+
+        # --- Clean and Normalize Metadata Lines ---
+        raw_college_info_clean = re.sub(r"[_\s]+", " ", raw_college_info).strip()
+
+        # --- Extract College and Class Info Robustly ---
+        college_name, class_info = "N/A", "N/A"
+
+        match_college = re.search(r"College:\s*(.+?)\s+Year\s+of\s+Study:", raw_college_info_clean, re.IGNORECASE)
+        match_year = re.search(r"Year\s+of\s+Study:\s*(.+)", raw_college_info_clean, re.IGNORECASE)
+
+        if match_college:
+            college_name = match_college.group(1).strip()
+        if match_year:
+            class_info = match_year.group(1).strip()
+
+
+        # --- Extract bordered tables ---
         border_map = {}
         for row in sheet.iter_rows():
             for cell in row:
                 if has_border(cell):
-                    cleaned_value = clean_text(cell.value)
-                    border_map[(cell.row, cell.column)] = cleaned_value
+                    border_map[(cell.row, cell.column)] = normalize(cell.value)
 
         visited = set()
         groups = []
@@ -78,7 +236,6 @@ def extract_mte_data(file_path):
                 groups.append(group)
 
         extracted_tables = []
-
         for group in groups:
             rows = [r for r, _ in group]
             cols = [c for _, c in group]
@@ -89,65 +246,65 @@ def extract_mte_data(file_path):
             for r in range(min_row, max_row + 1):
                 row_data = []
                 for c in range(min_col, max_col + 1):
-                    value = clean_text(sheet.cell(r, c).value)
-                    if value is not None:
+                    value = normalize(sheet.cell(r, c).value)
+                    if value:
                         row_data.append(value)
                 if row_data:
                     table.append(row_data)
 
             if table:
-                heading_list = table[0]
-                data_rows = table[1:]
+                heading = " ".join(table[0])
+                rows_as_string = "\n".join("    " + " | ".join(row) for row in table[1:])
+                extracted_tables.append({"heading": heading.strip(), "rows": rows_as_string.strip()})
 
-                heading = " ".join(str(item) for item in heading_list)
-
-                row_strings = ["    " + " ".join(str(item) for item in row) for row in data_rows]
-                rows_as_string = "\n".join(row_strings)
-
-                extracted_tables.append({
-                    "heading": heading,
-                    "rows": rows_as_string
-                })
-
-        mte_dict = {
-            "academic_progress": "",
-            "cocurricular": "",
-            "financial_needs": "",
-            "difficulties": "",
-            "exam_results": "",
-            "books_and_videos": "",
-            "health": "",
-            "learning_from_people": "",
-            "essay": "",
-            "action_plan": ""
-        }
+        # Initialize mte_dict before use!
+        mte_dict = {}
 
         heading_to_key_map = {
             "Academic Progress / Vacation Plan": "academic_progress",
-            "Co and Extra Curricular Progress-Plan": "cocurricular",
+            "Co and Extra Curricular Progress-Plan": "co-curricular",
             "Fin Reqm for the next 3 months (Details Please)": "financial_needs",
             "Difficulties (Social, Family, etc.)": "difficulties",
-            "Results of the exams (Regular college / university and other exams):": "exam_results",
+            "Results of the exams": "exam_results",
             "Reading Books / Watching Videos": "books_and_videos",
-            "Its very important to exercise regularly and eat and sleep properly": "health",
-            "New friends or acquaintances made and what you learnt from them": "learning_from_people",
-            "Essay on a topic of your choice including learning from the books read (Pl write in your own words, don't copy from the internet)": "essay",
+            "exercise regularly and eat and sleep": "health",
+            "friends or acquaintances made": "learning_from_people",
+            "Essay on a topic of your choice": "essay",
             "Action Plan for the coming month": "action_plan"
         }
 
         for table in extracted_tables:
-            heading = table['heading'].strip()
-            content = table['rows'].strip()
-
             for expected_heading, dict_key in heading_to_key_map.items():
-                if expected_heading in heading:
-                    mte_dict[dict_key] = content
+                if expected_heading.lower() in table['heading'].lower():
+                    mte_dict[dict_key] = table['rows']
                     break
 
-        return mte_dict
+        return {
+            "student_name": student_name,
+            "submission_month": submission_month,
+            "college_name": college_name,
+            "class_info": class_info,
+            "academic_progress": mte_dict.get("academic_progress", ""),
+            "co-curricular": mte_dict.get("co-curricular", ""),
+            "financial_needs": mte_dict.get("financial_needs", ""),
+            "difficulties": mte_dict.get("difficulties", ""),
+            "exam_results": mte_dict.get("exam_results", ""),
+            "books_and_videos": mte_dict.get("books_and_videos", ""),
+            "health": mte_dict.get("health", ""),
+            "learning_from_people": mte_dict.get("learning_from_people", ""),
+            "essay": mte_dict.get("essay", ""),
+            "action_plan": mte_dict.get("action_plan", "")
+        }
 
     except Exception as e:
         return {"error": f"Error extracting data: {e}"}
+
+
+
+
+
+
+
 
 def save_feedback_to_json(feedback, student_id):
     """

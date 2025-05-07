@@ -8,9 +8,8 @@ from utils import get_api_key_from_json
 client = Groq(api_key = get_api_key_from_json("GROQ_API_KEY"))
 
 AVAILABLE_MODELS = [
-    # "llama-3-70b-8192"
-     "deepseek-r1-distill-llama-70b"
-    # "meta-llama/llama-4-maverick-17b-128e-instruct"
+    "deepseek-r1-distill-llama-70b",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
 
 def evaluate_mte(mte_data, selected_model):
@@ -131,7 +130,7 @@ def build_prompt(mte_data):
         "strengths": ["...", "..."],
         "areas_for_improvement": ["...", "..."],
         "suggestions": ["...", "..."]
-    }
+     }
 
     ONLY output valid JSON. No additional text.
     """
@@ -139,7 +138,7 @@ def build_prompt(mte_data):
     user_content = f"""
     Student Submission:
     1. **Academic Progress and Vacation Plan:** {mte_data.get("academic_progress")}
-    2. **Co and Extra Curricular Progress-Plan:** {mte_data.get("cocurricular")}
+    2. **Co and Extra Curricular Progress-Plan:** {mte_data.get("co-curricular")}
     3. **Financial Requirements for the next 3 months:** {mte_data.get("financial_needs")}
     4. **Difficulties (Social, Family, etc.):** {mte_data.get("difficulties")}
     5. **Results of the exams:** {mte_data.get("exam_results")}
