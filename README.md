@@ -46,7 +46,8 @@ streamlit run main.py
 ```
 
 ---
-##📬 Automated Email-Based Evaluation (Gmail + Google Drive)
+
+## 📬 Automated Email-Based Evaluation (Gmail + Google Drive)
 - To activate the Google Workspace integration that automatically:
 
 - Fetches .xlsx MTEs from Gmail
